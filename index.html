@@ -750,14 +750,14 @@ async function aiIdentify(opts){
   // 通道1：本地识别服务（file:// 打开时可用）
   try{
     const r=await fetch("http://127.0.0.1:8123/identify?url="+encodeURIComponent(u),{signal:AbortSignal.timeout(4000)});
-    if(r.ok){const d=await r.json();if(!d.error){fillIdentified(d);return;}}
+    if(r.ok){const d=await r.json();if(!d.error){fillIdentified(d, opts);return;}}
   }catch(e){}
   // 通道2：云端 Worker（线上 https 打开时可用，需在「高级」配置地址）
   const cloud=getCloudUrl();
   if(cloud){
     try{
       const r=await fetch(cloud+"/identify?url="+encodeURIComponent(u),{signal:AbortSignal.timeout(15000)});
-      if(r.ok){const d=await r.json();if(!d.error){fillIdentified(d);return;}}
+      if(r.ok){const d=await r.json();if(!d.error){fillIdentified(d, opts);return;}}
     }catch(e){}
   }
   // 都失败
