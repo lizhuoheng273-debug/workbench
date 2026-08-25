@@ -353,8 +353,13 @@
 
 <div class="modal" id="m-addapply"><div class="box">
   <h3>添加投递（登记已投岗位）</h3>
-  <p>粘贴岗位<b>详情页链接</b> → 自动识别公司 → 补岗位名称 → 保存，即进入「已投递」进度。想要 JD / 评分 / 简历改写的，保存后把链接发我即可。</p>
-  <div class="field"><label>岗位链接</label><input id="aa-url" placeholder="https://…/position/xxx/detail" oninput="identifyCompanyFromInput()"></div>
+  <p>粘贴岗位<b>详情页链接</b> → 点「识别 JD」自动填公司 / 岗位名 / 城市 → 确认后保存，即进入「已投递」进度。想要 JD / 评分 / 简历改写的，保存后把链接发我即可。</p>
+  <div class="field"><label>岗位链接</label>
+    <div style="display:flex;gap:10px">
+      <input id="aa-url" placeholder="https://…/position/xxx/detail" oninput="identifyCompanyFromInput()" style="flex:1">
+      <button class="btn btn-primary" onclick="aiIdentify()" style="white-space:nowrap">识别 JD</button>
+    </div>
+  </div>
   <div class="field"><label>公司（识别自动填，可改）</label><input id="aa-co" placeholder="粘贴链接后自动识别"></div>
   <div class="field"><label>岗位名称（必填，照抄招聘页标题）</label><input id="aa-title" placeholder="如：AI产品经理（风控方向）"></div>
   <div class="row" style="margin-top:0">
@@ -692,6 +697,24 @@ function saveManualApply(){
   closeModal("m-addapply");loadStatic();toast("已登记为「已投递」："+co+"·"+ti);
 }
 function copyThisUrl(){const u=(document.getElementById("aa-url").value||"").trim();if(!u){toast("请先粘贴岗位链接");return;}copyText(u);toast("链接已复制，发给我即可补 JD/评分");}
+async function aiIdentify(){
+  const u=(document.getElementById("aa-url").value||"").trim();
+  if(!u){toast("请先粘贴岗位链接");return;}
+  if(!/^https?:\/\//.test(u)){toast("链接需以 http(s):// 开头");return;}
+  try{
+    const r=await fetch("http://127.0.0.1:8123/identify?url="+encodeURIComponent(u));
+    if(!r.ok)throw new Error("HTTP "+r.status);
+    const d=await r.json();
+    if(d.error){toast("识别失败："+d.error);return;}
+    if(d.company)document.getElementById("aa-co").value=d.company;
+    const okTitle=!!d.title;
+    if(okTitle)document.getElementById("aa-title").value=d.title;
+    if(d.city&&d.city!=="其他")document.getElementById("aa-city").value=d.city;
+    toast(okTitle?("已识别："+d.company+"·"+d.title):("已识别公司："+d.company+"，岗位名请照抄招聘页标题"));
+  }catch(e){
+    toast("识别服务未启动：请用「启动工作台.bat」打开工作台（会同时启动识别服务）");
+  }
+}
 
 function exportJSON(){const data={jobs:jobs,sources:sources};
   const b=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});const a=document.createElement("a");
