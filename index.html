@@ -356,7 +356,7 @@
   <p>粘贴岗位<b>详情页链接</b> → 点「识别 JD」自动填公司 / 岗位名 / 城市 → 确认后保存，即进入「已投递」进度。想要 JD / 评分 / 简历改写的，保存后把链接发我即可。</p>
   <div class="field"><label>岗位链接</label>
     <div style="display:flex;gap:10px">
-      <input id="aa-url" placeholder="https://…/position/xxx/detail" oninput="identifyCompanyFromInput()" style="flex:1">
+      <input id="aa-url" placeholder="https://…/position/xxx/detail" oninput="onAaInput()" style="flex:1">
       <button class="btn btn-primary" onclick="aiIdentify()" style="white-space:nowrap">识别 JD</button>
     </div>
   </div>
@@ -697,22 +697,29 @@ function saveManualApply(){
   closeModal("m-addapply");loadStatic();toast("已登记为「已投递」："+co+"·"+ti);
 }
 function copyThisUrl(){const u=(document.getElementById("aa-url").value||"").trim();if(!u){toast("请先粘贴岗位链接");return;}copyText(u);toast("链接已复制，发给我即可补 JD/评分");}
-async function aiIdentify(){
+let _aaDebounce=null;
+function onAaInput(){
+  identifyCompanyFromInput(); // 即时纯前端公司识别（无网络）
+  clearTimeout(_aaDebounce);
+  _aaDebounce=setTimeout(()=>aiIdentify({silent:true}),600); // 粘贴停顿后自动调服务补全岗位名/城市
+}
+async function aiIdentify(opts){
+  opts=opts||{};
   const u=(document.getElementById("aa-url").value||"").trim();
-  if(!u){toast("请先粘贴岗位链接");return;}
-  if(!/^https?:\/\//.test(u)){toast("链接需以 http(s):// 开头");return;}
+  if(!u)return;
+  if(!/^https?:\/\//.test(u)){if(!opts.silent)toast("链接需以 http(s):// 开头");return;}
   try{
     const r=await fetch("http://127.0.0.1:8123/identify?url="+encodeURIComponent(u));
     if(!r.ok)throw new Error("HTTP "+r.status);
     const d=await r.json();
-    if(d.error){toast("识别失败："+d.error);return;}
-    if(d.company)document.getElementById("aa-co").value=d.company;
-    const okTitle=!!d.title;
-    if(okTitle)document.getElementById("aa-title").value=d.title;
-    if(d.city&&d.city!=="其他")document.getElementById("aa-city").value=d.city;
-    toast(okTitle?("已识别："+d.company+"·"+d.title):("已识别公司："+d.company+"，岗位名请照抄招聘页标题"));
+    if(d.error){if(!opts.silent)toast("识别失败："+d.error);return;}
+    const filled=[];
+    if(d.company && document.getElementById("aa-co").value!==d.company){document.getElementById("aa-co").value=d.company;filled.push("公司");}
+    if(d.title && document.getElementById("aa-title").value!==d.title){document.getElementById("aa-title").value=d.title;filled.push("岗位名");}
+    if(d.city && d.city!=="其他" && document.getElementById("aa-city").value!==d.city){document.getElementById("aa-city").value=d.city;filled.push("城市");}
+    if(filled.length) toast("已自动填："+filled.join(" / "));
   }catch(e){
-    toast("识别服务未启动：请用「启动工作台.bat」打开工作台（会同时启动识别服务）");
+    if(!opts.silent)toast("识别服务未启动：双击「安装自启识别服务.bat」或用「启动工作台.bat」");
   }
 }
 
