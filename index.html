@@ -382,6 +382,10 @@
     <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:13px;color:var(--ink-2)">
       <input type="checkbox" id="aa-autosave" onchange="setAutoSave(this.checked)"> 识别成功后自动保存并跳看板
     </label>
+    <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:13px;color:var(--ink-2)">
+      <input type="checkbox" id="aa-clipauto" onchange="setClipAuto(this.checked)"> 复制岗位链接自动登记（后台监听剪贴板，连粘贴都不用）
+    </label>
+    <div id="aa-clip" style="font-size:11px;color:var(--ink-3);margin-top:4px"></div>
   </details>
 </div></div>
 
@@ -409,7 +413,7 @@ function lsGet(k,def){try{return JSON.parse(localStorage.getItem(k))||def;}catch
 function lsSet(k,v){localStorage.setItem(k,JSON.stringify(v));}
 const LS_OVR="wb_overrides_v1",LS_USRC="wb_user_sources_v1",LS_HID="wb_hidden_sources_v1",LS_EXTRA="wb_extra_jobs_v1";
 function saveOverride(j){const o=lsGet(LS_OVR,{});const k=stableKey(j);const rec=o[k]||{};rec.favorited=j.favorited;rec.status=j.status;if(j.interview_prep)rec.interview_prep=j.interview_prep;if(j.notes)rec.notes=j.notes;o[k]=rec;lsSet(LS_OVR,o);}
-function copyText(txt){if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(txt).then(()=>toast("已复制"),()=>fallbackCopy(txt));}else fallbackCopy(txt);}
+function copyText(txt){_clipSuppress=Date.now()+1500;if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(txt).then(()=>toast("已复制"),()=>fallbackCopy(txt));}else fallbackCopy(txt);}
 function fallbackCopy(txt){const ta=document.createElement("textarea");ta.value=txt;ta.style.position="fixed";ta.style.top="0";ta.style.opacity="0";document.body.appendChild(ta);ta.focus();ta.select();try{document.execCommand("copy");toast("已复制");}catch(e){toast("复制失败，请手动复制");}document.body.removeChild(ta);}
 const WB=window.__WB__||{jobs:[],sources:[],profile:{}};
 function loadStatic(){
@@ -692,9 +696,12 @@ function identifyCompanyFromInput(){
 }
 const LS_CLOUD="wb_cloud_url_v1";
 const LS_AUTO="wb_auto_save_v1";
+const LS_CLIP="wb_clip_auto_v1";
 function getCloudUrl(){return lsGet(LS_CLOUD,"");}
 function getAutoSave(){return lsGet(LS_AUTO,true);}
 function setAutoSave(v){lsSet(LS_AUTO,!!v);}
+function getClipAuto(){return lsGet(LS_CLIP,true);}
+function setClipAuto(v){lsSet(LS_CLIP,!!v);initClipAuto();}
 function saveCloudUrl(){
   const v=(document.getElementById("aa-cloud").value||"").trim().replace(/\/+$/,"");
   lsSet(LS_CLOUD,v);
@@ -722,7 +729,7 @@ async function checkSvc(){
     el.textContent="⚠ 本地识别服务未启动，且未配置云端地址。本地请用 启动工作台.bat 打开；线上请在下方「高级」粘贴 Worker 地址";
   }
 }
-function openAddApplyModal(){document.getElementById("m-addapply").classList.add("show");const cc=document.getElementById("aa-cloud");if(cc)cc.value=getCloudUrl();const ac=document.getElementById("aa-autosave");if(ac)ac.checked=getAutoSave();checkSvc();setTimeout(()=>document.getElementById("aa-url").focus(),50);}
+function openAddApplyModal(){document.getElementById("m-addapply").classList.add("show");const cc=document.getElementById("aa-cloud");if(cc)cc.value=getCloudUrl();const ac=document.getElementById("aa-autosave");if(ac)ac.checked=getAutoSave();const ca=document.getElementById("aa-clipauto");if(ca)ca.checked=getClipAuto();checkSvc();initClipAuto();setTimeout(()=>document.getElementById("aa-url").focus(),50);}
 function fillIdentified(d,opts){
   opts=opts||{};
   const filled=[];
@@ -763,6 +770,12 @@ async function aiIdentify(opts){
   // 都失败
   if(!opts.silent)toast("识别失败：本地/云端服务均不可用，请手动补岗位名");
 }
+function pushManualJob(job){
+  const key=stableKey(job);
+  if([...jobs,...lsGet(LS_EXTRA,[])].some(j=>stableKey(j)===key)){toast("该岗位已存在，无需重复登记");return false;}
+  const extra=lsGet(LS_EXTRA,[]);extra.push(job);lsSet(LS_EXTRA,extra);
+  loadStatic();toast("已登记为「已投递」："+job.company+"·"+job.title);return true;
+}
 function saveManualApply(){
   const co=(document.getElementById("aa-co").value||"").trim();
   const ti=(document.getElementById("aa-title").value||"").trim();
@@ -770,15 +783,12 @@ function saveManualApply(){
   const jt=document.getElementById("aa-type").value;
   const url=(document.getElementById("aa-url").value||"").trim();
   if(!co||!ti){toast("公司名与岗位名必填（岗位名照抄招聘页标题）");return;}
-  const key=(co+"||"+ti+"||"+ci);
-  if([...jobs,...lsGet(LS_EXTRA,[])].some(j=>stableKey(j)===key)){toast("该岗位已存在，无需重复登记");return;}
   const job={id:"m-"+Date.now(),company:co,title:ti,city:ci,job_type:jt,route:"campus",employment_type:"校招",
     source_platform:"手动登记",source_url:url,official_url:url,application_url:url,
     source_tier:"手动",jd_text:"",deadline:"",official_job_id:extractPid(url),
     match_score:0,match_evidence:[],hard_gate:"待核实",gap:"手动登记的已投岗位，暂无评分",
     status:"已投递",favorited:true,notes:"手动登记",interview_prep:[],created_at:new Date().toISOString().slice(0,10)+"T00:00:00"};
-  const extra=lsGet(LS_EXTRA,[]);extra.push(job);lsSet(LS_EXTRA,extra);
-  closeModal("m-addapply");loadStatic();toast("已登记为「已投递」："+co+"·"+ti);
+  if(pushManualJob(job))closeModal("m-addapply");
 }
 function copyThisUrl(){const u=(document.getElementById("aa-url").value||"").trim();if(!u){toast("请先粘贴岗位链接");return;}copyText(u);toast("链接已复制，发给我即可补 JD/评分");}
 let _aaDebounce=null;
@@ -786,6 +796,64 @@ function onAaInput(){
   identifyCompanyFromInput(); // 即时纯前端公司识别（无网络）
   clearTimeout(_aaDebounce);
   _aaDebounce=setTimeout(()=>aiIdentify({silent:true}),600); // 粘贴停顿后自动调服务补全岗位名/城市
+}
+
+/* ---------- 复制即自动登记：后台监听剪贴板 ---------- */
+let _clipSuppress=0, _clipStarted=false, _firstFocus=true;
+async function initClipAuto(){
+  const el=document.getElementById("aa-clip");
+  if(!navigator.clipboard){if(el)el.textContent="⚠ 当前浏览器不支持剪贴板读取，无法自动登记（请改用「添加投递」）。";return;}
+  if(!getClipAuto()){if(el)el.textContent="○ 复制自动登记已关闭（在「高级」勾选开启）。";return;}
+  startClipAuto(); // 即使未授权，切回本页也能读剪贴板登记
+  let state="";
+  try{
+    const st=await navigator.permissions.query({name:"clipboard-read"});state=st.state;
+    if(st.state==="prompt"){el.innerHTML='<span style="color:#B26A00">建议授权剪贴板读取以实现「真后台」监听：</span><a href="#" onclick="event.preventDefault();requestClipPerm()">点此开启</a>（不开启也能用：复制后切回本页自动登记）';}
+    else if(st.state==="denied"){el.textContent="⚠ 剪贴板权限被拒绝，复制后切回本页仍可登记；真后台需允许权限";}
+    else if(st.state==="granted"){el.textContent="✓ 复制自动登记已开启：复制岗位链接即自动登记（含后台）";}
+  }catch(e){el.textContent="✓ 复制自动登记已开启（复制后切回本页即自动登记）";}
+}
+async function requestClipPerm(){
+  try{const s=await navigator.permissions.request({name:"clipboard-read"});
+    if(s.state==="granted"){startClipAuto();const el=document.getElementById("aa-clip");if(el)el.textContent="✓ 复制自动登记已开启：复制岗位链接即自动登记（含后台）";}
+    else toast("未授权：复制后切回本页仍会自动登记");
+  }catch(e){toast("授权失败："+(e.message||e));}
+}
+function startClipAuto(){
+  if(_clipStarted)return;_clipStarted=true;
+  try{document.addEventListener("clipboardchange",onClipboardChange);}catch(e){}
+  // 兜底：未授权权限时，切回本页（focus / 可见）也能读剪贴板自动登记
+  window.addEventListener("focus",()=>{if(_firstFocus){_firstFocus=false;return;}onClipboardChange();});
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden)onClipboardChange();});
+}
+async function onClipboardChange(){
+  if(Date.now()<_clipSuppress)return;
+  if(!getClipAuto())return;
+  let text="";
+  try{text=await navigator.clipboard.readText();}catch(e){return;}
+  handleClipboardUrl(text);
+}
+async function handleClipboardUrl(text){
+  if(!text)return;
+  text=(text||"").trim();
+  const urls=[...text.matchAll(/https?:\/\/\S+/gi)].map(m=>m[0].replace(/[)\]>"'）】]+$/,"")).filter(Boolean);
+  if(!urls.length)return;
+  const u=urls[0];
+  if(!/^https?:\/\//.test(u))return;
+  // 识别：本地服务优先，再云端 Worker
+  let d=null;
+  try{const r=await fetch("http://127.0.0.1:8123/identify?url="+encodeURIComponent(u),{signal:AbortSignal.timeout(4000)});if(r.ok){const j=await r.json();if(!j.error)d=j;}}catch(e){}
+  if(!d){const cloud=getCloudUrl();if(cloud){try{const r=await fetch(cloud+"/identify?url="+encodeURIComponent(u),{signal:AbortSignal.timeout(12000)});if(r.ok){const j=await r.json();if(!j.error)d=j;}}catch(e){}}}
+  if(!d)return;
+  if(!d.known){toast("未识别到已知公司，未自动登记（可用「添加投递」手动）");return;}
+  const ti=(d.title||"").trim();
+  if(!ti){toast("该链接未含岗位名（多为应用系统页），请用「添加投递」补名称");return;}
+  const job={id:"m-"+Date.now(),company:d.company,title:ti,city:d.city||"其他",job_type:"其他",route:"campus",employment_type:"校招",
+    source_platform:"复制自动登记",source_url:u,official_url:u,application_url:u,
+    source_tier:"手动",jd_text:"",deadline:"",official_job_id:extractPid(u),
+    match_score:0,match_evidence:[],hard_gate:"待核实",gap:"复制自动登记的已投岗位，暂无评分",
+    status:"已投递",favorited:true,notes:"复制自动登记",interview_prep:[],created_at:new Date().toISOString().slice(0,10)+"T00:00:00"};
+  pushManualJob(job);
 }
 
 function exportJSON(){const data={jobs:jobs,sources:sources};
@@ -820,6 +888,7 @@ function renderViews(){
 }
 
 loadStatic();
+initClipAuto(); // 复制岗位链接自动登记：后台监听剪贴板
 </script>
 </body>
 </html>
