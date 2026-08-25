@@ -372,6 +372,14 @@
     <button class="btn btn-ghost" onclick="copyThisUrl()">复制链接发我</button>
     <button class="btn btn-ghost" onclick="closeModal('m-addapply')">关闭</button>
   </div>
+  <details style="margin-top:10px">
+    <summary style="cursor:pointer;font-size:12px;color:var(--ink-2)">高级：云端识别地址（线上版识别用，可选）</summary>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <input id="aa-cloud" placeholder="https://你的worker.workers.dev" style="flex:1">
+      <button class="btn btn-ghost" onclick="saveCloudUrl()">保存</button>
+    </div>
+    <div style="font-size:11px;color:var(--ink-3);margin-top:4px">线上 https 打开时浏览器不允许调本机服务，填入云端 Worker 地址后即可自动识别；本地打开仍走本机服务。</div>
+  </details>
 </div></div>
 
 <div class="toast" id="toast"></div>
@@ -679,21 +687,36 @@ function identifyCompanyFromInput(){
   const co=document.getElementById("aa-co");
   if(r.company&&!co.value)co.value=r.company;
 }
+const LS_CLOUD="wb_cloud_url_v1";
+function getCloudUrl(){return lsGet(LS_CLOUD,"");}
+function saveCloudUrl(){
+  const v=(document.getElementById("aa-cloud").value||"").trim().replace(/\/+$/,"");
+  lsSet(LS_CLOUD,v);
+  toast(v?"云端识别地址已保存（线上版可用）":"已清空云端地址");
+  checkSvc();
+}
 async function checkSvc(){
   const el=document.getElementById("aa-svc");
   if(!el)return;
   const base="padding:8px 10px;border-radius:6px;font-size:12px;margin-bottom:12px;";
+  let localOk=false;
   try{
     const r=await fetch("http://127.0.0.1:8123/ping",{cache:"no-store"});
-    if(!r.ok)throw 0;
+    localOk=r.ok;
+  }catch(e){}
+  const cloud=getCloudUrl();
+  if(localOk){
     el.style.cssText=base+"background:#E8F7EE;color:#00843D";
-    el.textContent="✓ 识别服务运行中：粘贴链接后自动识别（本地或线上打开均可）";
-  }catch(e){
+    el.textContent="✓ 识别服务运行中：粘贴链接后自动识别（本机服务）";
+  }else if(cloud){
+    el.style.cssText=base+"background:#E8F7EE;color:#00843D";
+    el.textContent="✓ 云端识别已配置：粘贴链接后自动识别（线上模式）";
+  }else{
     el.style.cssText=base+"background:#FDECEC;color:#C6290E";
-    el.textContent="⚠ 识别服务未启动：请确认已安装开机自启（安装自启识别服务.bat）或双击 启动工作台.bat；识别依赖本机后台服务";
+    el.textContent="⚠ 本地识别服务未启动，且未配置云端地址。本地请用 启动工作台.bat 打开；线上请在下方「高级」粘贴 Worker 地址";
   }
 }
-function openAddApplyModal(){document.getElementById("m-addapply").classList.add("show");checkSvc();setTimeout(()=>document.getElementById("aa-url").focus(),50);}
+function openAddApplyModal(){document.getElementById("m-addapply").classList.add("show");const cc=document.getElementById("aa-cloud");if(cc)cc.value=getCloudUrl();checkSvc();setTimeout(()=>document.getElementById("aa-url").focus(),50);}
 function fillIdentified(d){
   const filled=[];
   if(d.company && document.getElementById("aa-co").value!==d.company){document.getElementById("aa-co").value=d.company;filled.push("公司");}
@@ -706,16 +729,21 @@ async function aiIdentify(opts){
   const u=(document.getElementById("aa-url").value||"").trim();
   if(!u)return;
   if(!/^https?:\/\//.test(u)){if(!opts.silent)toast("链接需以 http(s):// 开头");return;}
+  // 通道1：本地识别服务（file:// 打开时可用）
   try{
-    const r=await fetch("http://127.0.0.1:8123/identify?url="+encodeURIComponent(u),{signal:AbortSignal.timeout(8000)});
-    if(!r.ok)throw new Error("HTTP "+r.status);
-    const d=await r.json();
-    if(d.error){if(!opts.silent)toast("识别失败："+d.error);return;}
-    fillIdentified(d);
-  }catch(e){
-    checkSvc();
-    if(!opts.silent)toast("识别服务未启动：见弹窗顶部提示");
+    const r=await fetch("http://127.0.0.1:8123/identify?url="+encodeURIComponent(u),{signal:AbortSignal.timeout(4000)});
+    if(r.ok){const d=await r.json();if(!d.error){fillIdentified(d);return;}}
+  }catch(e){}
+  // 通道2：云端 Worker（线上 https 打开时可用，需在「高级」配置地址）
+  const cloud=getCloudUrl();
+  if(cloud){
+    try{
+      const r=await fetch(cloud+"/identify?url="+encodeURIComponent(u),{signal:AbortSignal.timeout(15000)});
+      if(r.ok){const d=await r.json();if(!d.error){fillIdentified(d);return;}}
+    }catch(e){}
   }
+  // 都失败
+  if(!opts.silent)toast("识别失败：本地/云端服务均不可用，请手动补岗位名");
 }
 function saveManualApply(){
   const co=(document.getElementById("aa-co").value||"").trim();
@@ -740,29 +768,6 @@ function onAaInput(){
   identifyCompanyFromInput(); // 即时纯前端公司识别（无网络）
   clearTimeout(_aaDebounce);
   _aaDebounce=setTimeout(()=>aiIdentify({silent:true}),600); // 粘贴停顿后自动调服务补全岗位名/城市
-}
-async function aiIdentify(opts){
-  opts=opts||{};
-  const u=(document.getElementById("aa-url").value||"").trim();
-  if(!u)return;
-  if(!/^https?:\/\//.test(u)){if(!opts.silent)toast("链接需以 http(s):// 开头");return;}
-  // 通道1：本地识别服务
-  try{
-    const r=await fetch("http://127.0.0.1:8123/identify?url="+encodeURIComponent(u),{signal:AbortSignal.timeout(4000)});
-    if(r.ok){const d=await r.json();if(!d.error){fillIdentified(d);return;}}
-  }catch(e){}
-  // 通道2：公共 CORS 代理抓详情页 → 前端解析 title/城市
-  try{
-    const html=await fetchPageViaProxy(u);
-    if(html){
-      const d={company:identifyCompany(u).company,title:extractTitle(html),city:guessCityFromHtml(html)};
-      if(!d.title||SHELL_TITLES.has(d.title)||d.title===d.company||(d.title.startsWith(d.company)&&d.title.length<=d.company.length+3))d.title="";
-      if(d.company)fillIdentified(d);
-      return;
-    }
-  }catch(e){}
-  // 都失败
-  if(!opts.silent)toast("识别失败：链接需登录/反爬或网络受限，请手动补岗位名");
 }
 
 function exportJSON(){const data={jobs:jobs,sources:sources};
