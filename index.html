@@ -353,7 +353,8 @@
 
 <div class="modal" id="m-addapply"><div class="box">
   <h3>添加投递（登记已投岗位）</h3>
-  <p>粘贴岗位<b>详情页链接</b> → 点「识别 JD」自动填公司 / 岗位名 / 城市 → 确认后保存，即进入「已投递」进度。想要 JD / 评分 / 简历改写的，保存后把链接发我即可。</p>
+  <p>粘贴岗位<b>详情页链接</b> → 自动识别公司 / 岗位名 / 城市 → 确认后保存，即进入「已投递」进度。想要 JD / 评分 / 简历改写的，保存后把链接发我即可。</p>
+  <div id="aa-svc" style="display:none"></div>
   <div class="field"><label>岗位链接</label>
     <div style="display:flex;gap:10px">
       <input id="aa-url" placeholder="https://…/position/xxx/detail" oninput="onAaInput()" style="flex:1">
@@ -678,7 +679,21 @@ function identifyCompanyFromInput(){
   const co=document.getElementById("aa-co");
   if(r.company&&!co.value)co.value=r.company;
 }
-function openAddApplyModal(){document.getElementById("m-addapply").classList.add("show");setTimeout(()=>document.getElementById("aa-url").focus(),50);}
+async function checkSvc(){
+  const el=document.getElementById("aa-svc");
+  if(!el)return;
+  const base="padding:8px 10px;border-radius:6px;font-size:12px;margin-bottom:12px;";
+  try{
+    const r=await fetch("http://127.0.0.1:8123/ping",{cache:"no-store"});
+    if(!r.ok)throw 0;
+    el.style.cssText=base+"background:#E8F7EE;color:#00843D";
+    el.textContent="✓ 识别服务运行中：粘贴链接后自动识别公司/岗位名/城市";
+  }catch(e){
+    el.style.cssText=base+"background:#FDECEC;color:#C6290E";
+    el.textContent="⚠ 识别服务未启动：请用本地文件打开（C:\\简历\\秋招工作台\\frontend\\index.html），并确保已安装开机自启服务（安装自启识别服务.bat）或用 启动工作台.bat 打开";
+  }
+}
+function openAddApplyModal(){document.getElementById("m-addapply").classList.add("show");checkSvc();setTimeout(()=>document.getElementById("aa-url").focus(),50);}
 function saveManualApply(){
   const co=(document.getElementById("aa-co").value||"").trim();
   const ti=(document.getElementById("aa-title").value||"").trim();
@@ -719,7 +734,8 @@ async function aiIdentify(opts){
     if(d.city && d.city!=="其他" && document.getElementById("aa-city").value!==d.city){document.getElementById("aa-city").value=d.city;filled.push("城市");}
     if(filled.length) toast("已自动填："+filled.join(" / "));
   }catch(e){
-    if(!opts.silent)toast("识别服务未启动：双击「安装自启识别服务.bat」或用「启动工作台.bat」");
+    checkSvc();
+    if(!opts.silent)toast("识别服务未启动：见弹窗顶部提示");
   }
 }
 
