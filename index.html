@@ -379,6 +379,9 @@
       <button class="btn btn-ghost" onclick="saveCloudUrl()">保存</button>
     </div>
     <div style="font-size:11px;color:var(--ink-3);margin-top:4px">线上 https 打开时浏览器不允许调本机服务，填入云端 Worker 地址后即可自动识别；本地打开仍走本机服务。</div>
+    <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:13px;color:var(--ink-2)">
+      <input type="checkbox" id="aa-autosave" onchange="setAutoSave(this.checked)"> 识别成功后自动保存并跳看板
+    </label>
   </details>
 </div></div>
 
@@ -688,7 +691,10 @@ function identifyCompanyFromInput(){
   if(r.company&&!co.value)co.value=r.company;
 }
 const LS_CLOUD="wb_cloud_url_v1";
+const LS_AUTO="wb_auto_save_v1";
 function getCloudUrl(){return lsGet(LS_CLOUD,"");}
+function getAutoSave(){return lsGet(LS_AUTO,true);}
+function setAutoSave(v){lsSet(LS_AUTO,!!v);}
 function saveCloudUrl(){
   const v=(document.getElementById("aa-cloud").value||"").trim().replace(/\/+$/,"");
   lsSet(LS_CLOUD,v);
@@ -716,13 +722,25 @@ async function checkSvc(){
     el.textContent="⚠ 本地识别服务未启动，且未配置云端地址。本地请用 启动工作台.bat 打开；线上请在下方「高级」粘贴 Worker 地址";
   }
 }
-function openAddApplyModal(){document.getElementById("m-addapply").classList.add("show");const cc=document.getElementById("aa-cloud");if(cc)cc.value=getCloudUrl();checkSvc();setTimeout(()=>document.getElementById("aa-url").focus(),50);}
-function fillIdentified(d){
+function openAddApplyModal(){document.getElementById("m-addapply").classList.add("show");const cc=document.getElementById("aa-cloud");if(cc)cc.value=getCloudUrl();const ac=document.getElementById("aa-autosave");if(ac)ac.checked=getAutoSave();checkSvc();setTimeout(()=>document.getElementById("aa-url").focus(),50);}
+function fillIdentified(d,opts){
+  opts=opts||{};
   const filled=[];
   if(d.company && document.getElementById("aa-co").value!==d.company){document.getElementById("aa-co").value=d.company;filled.push("公司");}
   if(d.title && document.getElementById("aa-title").value!==d.title){document.getElementById("aa-title").value=d.title;filled.push("岗位名");}
   if(d.city && d.city!=="其他" && document.getElementById("aa-city").value!==d.city){document.getElementById("aa-city").value=d.city;filled.push("城市");}
-  if(filled.length) toast("已自动填："+filled.join(" / "));
+  if(!filled.length)return;
+  // 主动点"识别 JD"按钮（非 silent）+ 有岗位名 + 开了自动保存 → 一键保存并跳看板
+  if(!opts.silent && d.title && getAutoSave()){
+    toast("✓ 已识别"+d.company+"·"+d.title+(d.city?"·"+d.city:"")+"  → 自动保存中…");
+    setTimeout(()=>{
+      try{saveManualApply();}catch(e){toast("保存失败："+(e.message||e));return;}
+      switchTab("kanban");
+      closeModal("m-addapply");
+    },250);
+  }else{
+    toast("已自动填："+filled.join(" / "));
+  }
 }
 async function aiIdentify(opts){
   opts=opts||{};
