@@ -395,7 +395,7 @@
 
 <div class="modal" id="m-addapply"><div class="box">
   <h3>添加岗位</h3>
-  <p>粘贴岗位详情页链接，识别公司、岗位、城市和 JD，然后选择进度保存。</p>
+  <p>粘贴岗位详情页链接，识别公司、岗位、城市和 JD；识别失败时可手动填写。</p>
   <div class="field"><label>岗位链接</label>
     <div style="display:flex;gap:10px">
       <input id="aa-url" placeholder="https://…/position/xxx/detail" oninput="onAaInput()" style="flex:1">
@@ -404,10 +404,10 @@
   </div>
   <div id="aa-progress" role="status" aria-live="polite" style="font-size:12px;color:var(--ink-2)">等待识别岗位链接</div>
   <div id="aa-result" class="hidden">
-    <div class="field"><label>公司</label><input id="aa-co" readonly></div>
-    <div class="field"><label>岗位名称</label><input id="aa-title" readonly></div>
-    <div class="field"><label>城市</label><input id="aa-city" readonly></div>
-    <div class="field"><label>岗位描述 / JD</label><textarea id="aa-jd" rows="7" readonly></textarea></div>
+    <div class="field"><label for="aa-co">公司</label><input id="aa-co" oninput="updateAaSaveState()" readonly></div>
+    <div class="field"><label for="aa-title">岗位名称</label><input id="aa-title" oninput="updateAaSaveState()" readonly></div>
+    <div class="field"><label for="aa-city">城市</label><input id="aa-city" readonly></div>
+    <div class="field"><label for="aa-jd">岗位描述 / JD</label><textarea id="aa-jd" rows="7" oninput="updateAaSaveState()" readonly></textarea></div>
   </div>
   <div class="field"><label>保存到</label><div class="aa-choices" role="group" aria-label="岗位进度">
     <label><input type="radio" name="aa-status" value="收藏">收藏</label>
@@ -803,7 +803,7 @@ async function checkSvc(){
     el.textContent="公开详情页可在线识别；如招聘网站限制读取，可在下方配置自有识别服务或手动填写";
   }
 }
-let aaRecognized=null;
+let aaRecognized=null,aaManual=false;
 function openAddApplyModal(){
   document.getElementById("m-addapply").classList.add("show");
   document.getElementById("aa-url").value="";
@@ -813,10 +813,33 @@ function openAddApplyModal(){
 }
 function resetApplyResult(message){
   aaRecognized=null;
+  aaManual=false;
   document.getElementById("aa-result").classList.add("hidden");
   document.getElementById("aa-save").disabled=true;
   document.getElementById("aa-progress").textContent=message;
-  for(const id of ["aa-co","aa-title","aa-city","aa-jd"])document.getElementById(id).value="";
+  for(const id of ["aa-co","aa-title","aa-city","aa-jd"]){
+    const field=document.getElementById(id);
+    field.value="";
+    field.readOnly=true;
+  }
+}
+function updateAaSaveState(){
+  if(!aaManual)return;
+  document.getElementById("aa-save").disabled=!["aa-co","aa-title","aa-jd"].every(id=>document.getElementById(id).value.trim());
+}
+function showManualFallback(){
+  aaRecognized=null;
+  const wasManual=aaManual;
+  aaManual=true;
+  for(const id of ["aa-co","aa-title","aa-city","aa-jd"]){
+    const field=document.getElementById(id);
+    field.readOnly=false;
+    if(!wasManual)field.value="";
+  }
+  if(!document.getElementById("aa-co").value)document.getElementById("aa-co").value=identifyCompany(document.getElementById("aa-url").value.trim()).company||"";
+  document.getElementById("aa-result").classList.remove("hidden");
+  document.getElementById("aa-progress").textContent="识别失败，请手动填写公司、岗位名称和 JD；城市可选。";
+  updateAaSaveState();
 }
 function normalizeIdentified(d,u){
   const known=identifyCompany(u);
@@ -875,10 +898,12 @@ function fillIdentified(d,opts){
   d=normalizeIdentified(d,document.getElementById("aa-url").value);
   if(!d.company||!d.title||!d.jd_text)return false;
   aaRecognized={...d,url:document.getElementById("aa-url").value.trim()};
+  aaManual=false;
   document.getElementById("aa-co").value=d.company;
   document.getElementById("aa-title").value=d.title;
   document.getElementById("aa-city").value=d.city||"未标明";
   document.getElementById("aa-jd").value=d.jd_text;
+  for(const id of ["aa-co","aa-title","aa-city","aa-jd"])document.getElementById(id).readOnly=true;
   document.getElementById("aa-result").classList.remove("hidden");
   document.getElementById("aa-save").disabled=false;
   document.getElementById("aa-progress").textContent="识别完成，请选择进度后保存";
@@ -924,7 +949,7 @@ async function aiIdentify(opts){
     const d=await identifyURL(u);
     if(requestId===_aaRequestId&&document.getElementById("aa-url").value.trim()===u)fillIdentified(d,opts);
   }catch(e){
-    if(requestId===_aaRequestId)document.getElementById("aa-progress").textContent="未能完整识别公司、岗位和 JD。请确认是岗位详情链接；部分网站会限制外部读取。";
+    if(requestId===_aaRequestId&&document.getElementById("aa-url").value.trim()===u)showManualFallback();
   }
 }
 function pushManualJob(job){
@@ -943,15 +968,22 @@ function pushManualJob(job){
   loadStatic();toast("已保存到「"+job.status+"」："+job.company+"·"+job.title);return job.id;
 }
 function saveManualApply(){
-  const d=aaRecognized;
-  if(!d||d.url!==document.getElementById("aa-url").value.trim()){toast("请先识别岗位详情");return;}
+  const url=document.getElementById("aa-url").value.trim();
+  const d=aaManual?{
+    company:document.getElementById("aa-co").value.trim(),
+    title:document.getElementById("aa-title").value.trim(),
+    city:document.getElementById("aa-city").value.trim(),
+    jd_text:document.getElementById("aa-jd").value.trim(),url
+  }:aaRecognized;
+  if(!d||d.url!==url){toast("请先识别岗位详情");return;}
+  if(!d.company||!d.title||!d.jd_text){toast("请填写公司、岗位名称和 JD");return;}
   const status=document.querySelector('input[name="aa-status"]:checked')?.value;
   if(!["收藏","待投递","已投递"].includes(status)){toast("请选择岗位进度");return;}
   const job={id:"m-"+Date.now()+"-"+Math.random().toString(36).slice(2,7),company:d.company,title:d.title,city:d.city||"其他",job_type:"其他",industry:industryOf({company:d.company}),route:"campus",employment_type:"校招",
-    source_platform:"链接识别",source_url:d.url,official_url:d.url,application_url:d.url,
+    source_platform:aaManual?"手动填写":"链接识别",source_url:d.url,official_url:d.url,application_url:d.url,
     source_tier:"手动",jd_text:d.jd_text,deadline:"",official_job_id:extractPid(d.url),
     match_score:0,match_evidence:[],hard_gate:"待核实",gap:"链接识别录入，暂无评分",
-    status,favorited:status==="收藏",notes:"链接识别",interview_prep:[],created_at:new Date().toISOString().slice(0,10)+"T00:00:00"};
+    status,favorited:status==="收藏",notes:aaManual?"识别失败后手动填写":"链接识别",interview_prep:[],created_at:new Date().toISOString().slice(0,10)+"T00:00:00"};
   const savedId=pushManualJob(job);
   if(savedId){
     closeModal("m-addapply");
