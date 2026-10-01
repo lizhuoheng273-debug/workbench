@@ -135,6 +135,14 @@
   .col .mini{background:#F7F8FA;border-radius:8px;padding:12px;margin-bottom:10px;font-size:13px;cursor:pointer;border:1px solid transparent;transition:all .15s}
   .col .mini:hover{border-color:var(--line-2);background:#fff;box-shadow:var(--sh-sm)}
   .col .mini .mco{color:var(--ink-3);font-size:12px;margin-top:4px}
+  .col .mini.just-added{animation:added-pulse 4s ease-out;border-color:var(--brand)}
+  @keyframes added-pulse{0%,35%,70%{background:#DCEAFF;box-shadow:0 0 0 5px rgba(0,82,217,.24)}18%,53%,100%{background:#F7F8FA;box-shadow:none}}
+  @media (prefers-reduced-motion:reduce){.col .mini.just-added{animation:none;background:#EAF1FE;box-shadow:0 0 0 3px rgba(0,82,217,.18)}}
+  .aa-choices{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+  .aa-choices label{margin:0;padding:9px 13px;border:1px solid var(--line-2);border-radius:8px;cursor:pointer}
+  .aa-choices label:has(input:checked){border-color:var(--brand);background:var(--brand-l);color:var(--brand)}
+  .aa-choices input{width:auto;margin-right:5px}
+  #aa-save:disabled{opacity:.5;cursor:not-allowed}
 
   /* Prep */
   .prep-head{margin-bottom:14px;font-size:14px;color:var(--ink-2)}
@@ -386,42 +394,31 @@
 </div></div>
 
 <div class="modal" id="m-addapply"><div class="box">
-  <h3>添加投递（登记已投岗位）</h3>
-  <p>粘贴岗位详情页链接，识别公司、岗位、城市和 JD；请核对后保存。部分招聘网站限制外部读取，无法识别时可以手动填写。</p>
-  <div id="aa-svc"></div>
+  <h3>添加岗位</h3>
+  <p>粘贴岗位详情页链接，识别公司、岗位、城市和 JD，然后选择进度保存。</p>
   <div class="field"><label>岗位链接</label>
     <div style="display:flex;gap:10px">
       <input id="aa-url" placeholder="https://…/position/xxx/detail" oninput="onAaInput()" style="flex:1">
-      <button class="btn btn-primary" onclick="aiIdentify()" style="white-space:nowrap">识别 JD</button>
+      <button class="btn btn-primary" onclick="clearTimeout(_aaDebounce);aiIdentify()" style="white-space:nowrap">识别 JD</button>
     </div>
   </div>
-  <div class="field"><label>公司（识别自动填，可改）</label><input id="aa-co" placeholder="粘贴链接后自动识别"></div>
-  <div class="field"><label>岗位名称（必填，照抄招聘页标题）</label><input id="aa-title" placeholder="如：AI产品经理（风控方向）"></div>
-  <div class="field"><label>岗位描述 / JD（识别自动填，可改）</label><textarea id="aa-jd" rows="7" placeholder="岗位职责、任职要求等"></textarea></div>
-  <div class="row" style="margin-top:0">
-    <div class="field" style="flex:1"><label>城市</label><select id="aa-city"><option>深圳</option><option>香港</option><option>广州</option><option>北京/上海</option><option>其他</option></select></div>
-    <div class="field" style="flex:1"><label>类型</label><select id="aa-type"><option>其他</option><option>AI产品经理</option><option>智能体</option><option>大模型应用</option><option>金融科技商分</option><option>商业分析</option></select></div>
+  <div id="aa-progress" role="status" aria-live="polite" style="font-size:12px;color:var(--ink-2)">等待识别岗位链接</div>
+  <div id="aa-result" class="hidden">
+    <div class="field"><label>公司</label><input id="aa-co" readonly></div>
+    <div class="field"><label>岗位名称</label><input id="aa-title" readonly></div>
+    <div class="field"><label>城市</label><input id="aa-city" readonly></div>
+    <div class="field"><label>岗位描述 / JD</label><textarea id="aa-jd" rows="7" readonly></textarea></div>
   </div>
+  <div class="field"><label>保存到</label><div class="aa-choices" role="group" aria-label="岗位进度">
+    <label><input type="radio" name="aa-status" value="收藏">收藏</label>
+    <label><input type="radio" name="aa-status" value="待投递" checked>待投递</label>
+    <label><input type="radio" name="aa-status" value="已投递">已投递</label>
+  </div></div>
   <div class="row">
-    <button class="btn btn-primary" onclick="saveManualApply()">保存为「已投递」</button>
+    <button class="btn btn-primary" id="aa-save" onclick="saveManualApply()" disabled>保存岗位</button>
     <button class="btn btn-ghost" onclick="copyThisUrl()">复制链接</button>
     <button class="btn btn-ghost" onclick="closeModal('m-addapply')">关闭</button>
   </div>
-  <details style="margin-top:10px">
-    <summary style="cursor:pointer;font-size:12px;color:var(--ink-2)">高级：云端识别地址（线上版识别用，可选）</summary>
-    <div style="display:flex;gap:8px;margin-top:8px">
-      <input id="aa-cloud" placeholder="https://你的worker.workers.dev" style="flex:1">
-      <button class="btn btn-ghost" onclick="saveCloudUrl()">保存</button>
-    </div>
-    <div style="font-size:11px;color:var(--ink-3);margin-top:4px">链接识别会通过 Jina Reader 读取公开招聘页；受访问限制的页面可配置你自己的 Worker。本机服务也可作为备用。</div>
-    <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:13px;color:var(--ink-2)">
-      <input type="checkbox" id="aa-autosave" onchange="setAutoSave(this.checked)"> 识别成功后自动保存并跳看板
-    </label>
-    <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:13px;color:var(--ink-2)">
-      <input type="checkbox" id="aa-clipauto" onchange="setClipAuto(this.checked)"> 复制岗位链接自动登记（后台监听剪贴板，连粘贴都不用）
-    </label>
-    <div id="aa-clip" style="font-size:11px;color:var(--ink-3);margin-top:4px"></div>
-  </details>
 </div></div>
 
 <div class="toast" id="toast"></div>
@@ -608,7 +605,14 @@ function renderKanban(){
   const el=document.getElementById("view-kanban");
   el.innerHTML=`<div class="kanban">`+STATUSES.map(st=>{const items=jobs.filter(j=>j.status===st);
     return `<div class="col"><h4>${st}<span class="cnt">${items.length}</span></h4>${
-      items.length?items.map(j=>`<div class="mini" onclick="openDetail('${j.id}')"><div style="font-weight:600">${esc(j.title)}</div><div class="mco">${esc(j.company)} · ${esc(j.city)}</div></div>`).join(""):`<div style="font-size:12px;color:var(--ink-3);text-align:center;padding:14px 0">—</div>`}</div>`;}).join("")+`</div>`;
+      items.length?items.map(j=>`<div class="mini" data-job-id="${esc(j.id)}" onclick="openDetail('${j.id}')"><div style="font-weight:600">${esc(j.title)}</div><div class="mco">${esc(j.company)} · ${esc(j.city)}</div></div>`).join(""):`<div style="font-size:12px;color:var(--ink-3);text-align:center;padding:14px 0">—</div>`}</div>`;}).join("")+`</div>`;
+}
+function highlightKanbanJob(id){
+  const card=[...document.querySelectorAll("#view-kanban .mini")].find(el=>el.dataset.jobId===id);
+  if(!card)return;
+  card.scrollIntoView({behavior:"smooth",block:"center",inline:"center"});
+  card.classList.add("just-added");
+  setTimeout(()=>card.classList.remove("just-added"),4200);
 }
 function renderPrep(){
   const el=document.getElementById("view-prep");
@@ -799,7 +803,21 @@ async function checkSvc(){
     el.textContent="公开详情页可在线识别；如招聘网站限制读取，可在下方配置自有识别服务或手动填写";
   }
 }
-function openAddApplyModal(){document.getElementById("m-addapply").classList.add("show");const cc=document.getElementById("aa-cloud");if(cc)cc.value=getCloudUrl();const ac=document.getElementById("aa-autosave");if(ac)ac.checked=getAutoSave();const ca=document.getElementById("aa-clipauto");if(ca)ca.checked=getClipAuto();checkSvc();initClipAuto();setTimeout(()=>document.getElementById("aa-url").focus(),50);}
+let aaRecognized=null;
+function openAddApplyModal(){
+  document.getElementById("m-addapply").classList.add("show");
+  document.getElementById("aa-url").value="";
+  document.querySelector('input[name="aa-status"][value="待投递"]').checked=true;
+  resetApplyResult("等待识别岗位链接");
+  setTimeout(()=>document.getElementById("aa-url").focus(),50);
+}
+function resetApplyResult(message){
+  aaRecognized=null;
+  document.getElementById("aa-result").classList.add("hidden");
+  document.getElementById("aa-save").disabled=true;
+  document.getElementById("aa-progress").textContent=message;
+  for(const id of ["aa-co","aa-title","aa-city","aa-jd"])document.getElementById(id).value="";
+}
 function normalizeIdentified(d,u){
   const known=identifyCompany(u);
   const company=String(d.company||d.company_name||known.company||"").trim();
@@ -844,27 +862,16 @@ async function readerIdentify(u){
 function fillIdentified(d,opts){
   opts=opts||{};
   d=normalizeIdentified(d,document.getElementById("aa-url").value);
-  const filled=[];
-  if(d.company && document.getElementById("aa-co").value!==d.company){document.getElementById("aa-co").value=d.company;filled.push("公司");}
-  if(d.title && document.getElementById("aa-title").value!==d.title){document.getElementById("aa-title").value=d.title;filled.push("岗位名");}
-  if(d.city && d.city!=="其他" && document.getElementById("aa-city").value!==d.city){
-    const cityEl=document.getElementById("aa-city");
-    if(![...cityEl.options].some(x=>x.value===d.city))cityEl.add(new Option(d.city,d.city));
-    cityEl.value=d.city;filled.push("城市");
-  }
-  if(d.jd_text && document.getElementById("aa-jd").value!==d.jd_text){document.getElementById("aa-jd").value=d.jd_text;filled.push("JD");}
-  if(!filled.length)return;
-  // 主动点"识别 JD"按钮（非 silent）+ 有岗位名 + 开了自动保存 → 一键保存并跳看板
-  if(!opts.silent && d.title && d.company && getAutoSave()){
-    toast("✓ 已识别"+d.company+"·"+d.title+(d.city?"·"+d.city:"")+"  → 自动保存中…");
-    setTimeout(()=>{
-      try{saveManualApply();}catch(e){toast("保存失败："+(e.message||e));return;}
-      switchTab("kanban");
-      closeModal("m-addapply");
-    },250);
-  }else{
-    toast("已自动填："+filled.join(" / "));
-  }
+  if(!d.company||!d.title||!d.jd_text)return false;
+  aaRecognized={...d,url:document.getElementById("aa-url").value.trim()};
+  document.getElementById("aa-co").value=d.company;
+  document.getElementById("aa-title").value=d.title;
+  document.getElementById("aa-city").value=d.city||"未标明";
+  document.getElementById("aa-jd").value=d.jd_text;
+  document.getElementById("aa-result").classList.remove("hidden");
+  document.getElementById("aa-save").disabled=false;
+  document.getElementById("aa-progress").textContent="识别完成，请选择进度后保存";
+  return true;
 }
 async function aiIdentify(opts){
   opts=opts||{};
@@ -872,7 +879,8 @@ async function aiIdentify(opts){
   if(!u)return;
   if(!/^https?:\/\//.test(u)){if(!opts.silent)toast("链接需以 http(s):// 开头");return;}
   const requestId=++_aaRequestId;
-  const apply=d=>{if(requestId===_aaRequestId&&document.getElementById("aa-url").value.trim()===u){fillIdentified(d,opts);return true;}return false;};
+  document.getElementById("aa-progress").textContent="正在识别岗位详情…";
+  const apply=d=>requestId===_aaRequestId&&document.getElementById("aa-url").value.trim()===u&&fillIdentified(d,opts);
   // 纯静态 Pages 可直接使用的公开读取通道；京东详情页需先解析 hash 中的岗位 ID。
   try{const d=await readerIdentify(u);if(apply(d))return;}catch(e){}
   if(requestId!==_aaRequestId)return;
@@ -891,7 +899,7 @@ async function aiIdentify(opts){
     }catch(e){}
   }
   // 都失败
-  if(!opts.silent&&requestId===_aaRequestId)toast("未能读取该岗位详情，请手动填写或检查链接");
+  if(requestId===_aaRequestId)document.getElementById("aa-progress").textContent="未能完整识别公司、岗位和 JD，请检查详情页链接或复制链接稍后重试";
 }
 function pushManualJob(job){
   const key=stableKey(job);
@@ -900,28 +908,28 @@ function pushManualJob(job){
   loadStatic();toast("已登记为「已投递」："+job.company+"·"+job.title);return true;
 }
 function saveManualApply(){
-  const co=(document.getElementById("aa-co").value||"").trim();
-  const ti=(document.getElementById("aa-title").value||"").trim();
-  const ci=document.getElementById("aa-city").value;
-  const jt=document.getElementById("aa-type").value;
-  const url=(document.getElementById("aa-url").value||"").trim();
-  if(!co||!ti){toast("公司名与岗位名必填（岗位名照抄招聘页标题）");return;}
-  const job={id:"m-"+Date.now(),company:co,title:ti,city:ci,job_type:jt,industry:industryOf({company:co}),route:"campus",employment_type:"校招",
-    source_platform:"手动登记",source_url:url,official_url:url,application_url:url,
-    source_tier:"手动",jd_text:(document.getElementById("aa-jd").value||"").trim(),deadline:"",official_job_id:extractPid(url),
+  const d=aaRecognized;
+  if(!d||d.url!==document.getElementById("aa-url").value.trim()){toast("请先识别岗位详情");return;}
+  const status=document.querySelector('input[name="aa-status"]:checked')?.value;
+  if(!["收藏","待投递","已投递"].includes(status)){toast("请选择岗位进度");return;}
+  const job={id:"m-"+Date.now()+"-"+Math.random().toString(36).slice(2,7),company:d.company,title:d.title,city:d.city||"其他",job_type:"其他",industry:industryOf({company:d.company}),route:"campus",employment_type:"校招",
+    source_platform:"链接识别",source_url:d.url,official_url:d.url,application_url:d.url,
+    source_tier:"手动",jd_text:d.jd_text,deadline:"",official_job_id:extractPid(d.url),
     match_score:0,match_evidence:[],hard_gate:"待核实",gap:"手动登记的已投岗位，暂无评分",
-    status:"已投递",favorited:true,notes:"手动登记",interview_prep:[],created_at:new Date().toISOString().slice(0,10)+"T00:00:00"};
-  if(pushManualJob(job))closeModal("m-addapply");
+    status,favorited:status==="收藏",notes:"链接识别",interview_prep:[],created_at:new Date().toISOString().slice(0,10)+"T00:00:00"};
+  if(pushManualJob(job)){
+    closeModal("m-addapply");
+    switchTab("kanban");
+    requestAnimationFrame(()=>highlightKanbanJob(job.id));
+  }
 }
 function copyThisUrl(){const u=(document.getElementById("aa-url").value||"").trim();if(!u){toast("请先粘贴岗位链接");return;}copyText(u);toast("链接已复制，发给我即可补 JD/评分");}
 let _aaDebounce=null,_aaRequestId=0;
 function onAaInput(){
   ++_aaRequestId;
-  for(const id of ["aa-co","aa-title","aa-jd"])document.getElementById(id).value="";
-  document.getElementById("aa-city").value="其他";
-  identifyCompanyFromInput(); // 即时纯前端公司识别（无网络）
+  resetApplyResult("等待识别岗位链接");
   clearTimeout(_aaDebounce);
-  _aaDebounce=setTimeout(()=>aiIdentify({silent:true}),600); // 粘贴停顿后自动调服务补全岗位名/城市
+  _aaDebounce=setTimeout(()=>aiIdentify({silent:true}),600);
 }
 
 /* ---------- 复制即自动登记：后台监听剪贴板 ---------- */
@@ -1055,7 +1063,6 @@ function goCompany(co){
 }
 
 loadStatic();
-initClipAuto(); // 复制岗位链接自动登记：后台监听剪贴板
 </script>
 </body>
 </html>
