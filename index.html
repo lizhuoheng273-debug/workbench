@@ -903,9 +903,18 @@ async function aiIdentify(opts){
 }
 function pushManualJob(job){
   const key=stableKey(job);
-  if([...jobs,...lsGet(LS_EXTRA,[])].some(j=>stableKey(j)===key)){toast("该岗位已存在，无需重复登记");return false;}
+  const existing=jobs.find(j=>(job.source_url&&j.source_url===job.source_url)||stableKey(j)===key);
+  if(existing){
+    const extra=lsGet(LS_EXTRA,[]),stored=extra.find(j=>j.id===existing.id);
+    if(stored){
+      const overrides=lsGet(LS_OVR,{});delete overrides[stableKey(existing)];lsSet(LS_OVR,overrides);
+      Object.assign(stored,{company:job.company,title:job.title,city:job.city,jd_text:job.jd_text,status:job.status,favorited:job.favorited});lsSet(LS_EXTRA,extra);
+    }
+    else{existing.status=job.status;existing.favorited=job.favorited;saveOverride(existing);}
+    loadStatic();toast("已更新为「"+job.status+"」："+job.company+"·"+job.title);return existing.id;
+  }
   const extra=lsGet(LS_EXTRA,[]);extra.push(job);lsSet(LS_EXTRA,extra);
-  loadStatic();toast("已登记为「已投递」："+job.company+"·"+job.title);return true;
+  loadStatic();toast("已保存到「"+job.status+"」："+job.company+"·"+job.title);return job.id;
 }
 function saveManualApply(){
   const d=aaRecognized;
@@ -915,15 +924,16 @@ function saveManualApply(){
   const job={id:"m-"+Date.now()+"-"+Math.random().toString(36).slice(2,7),company:d.company,title:d.title,city:d.city||"其他",job_type:"其他",industry:industryOf({company:d.company}),route:"campus",employment_type:"校招",
     source_platform:"链接识别",source_url:d.url,official_url:d.url,application_url:d.url,
     source_tier:"手动",jd_text:d.jd_text,deadline:"",official_job_id:extractPid(d.url),
-    match_score:0,match_evidence:[],hard_gate:"待核实",gap:"手动登记的已投岗位，暂无评分",
+    match_score:0,match_evidence:[],hard_gate:"待核实",gap:"链接识别录入，暂无评分",
     status,favorited:status==="收藏",notes:"链接识别",interview_prep:[],created_at:new Date().toISOString().slice(0,10)+"T00:00:00"};
-  if(pushManualJob(job)){
+  const savedId=pushManualJob(job);
+  if(savedId){
     closeModal("m-addapply");
     switchTab("kanban");
-    requestAnimationFrame(()=>highlightKanbanJob(job.id));
+    requestAnimationFrame(()=>highlightKanbanJob(savedId));
   }
 }
-function copyThisUrl(){const u=(document.getElementById("aa-url").value||"").trim();if(!u){toast("请先粘贴岗位链接");return;}copyText(u);toast("链接已复制，发给我即可补 JD/评分");}
+function copyThisUrl(){const u=(document.getElementById("aa-url").value||"").trim();if(!u){toast("请先粘贴岗位链接");return;}copyText(u);}
 let _aaDebounce=null,_aaRequestId=0;
 function onAaInput(){
   ++_aaRequestId;
